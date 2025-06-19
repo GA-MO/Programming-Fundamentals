@@ -726,56 +726,220 @@ DROP TABLE orders;
 RENAME TABLE orders_new TO orders;
 ```
 
-### 🔧 การใช้งานกับ Framework
+### 🔙 ตัวอย่าง: การ Rollback เมื่อเกิดปัญหา
 
-#### **Laravel Example**
-```php
-<?php
-// การสร้าง migration
-php artisan make:migration add_phone_to_users_table
+#### **Scenario 1: Rollback การเพิ่ม Column ที่มีปัญหา**
 
-// database/migrations/xxxx_add_phone_to_users_table.php
-class AddPhoneToUsersTable extends Migration
-{
-    public function up()
-    {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('phone', 20)->nullable()->after('email');
-            $table->index('phone');
-        });
-    }
-    
-    public function down()
-    {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropIndex(['phone']);
-            $table->dropColumn('phone');
-        });
-    }
-}
+```sql
+-- สถานการณ์: เพิ่ม phone column แต่ app crash เพราะ validation
+-- Migration ที่ทำไป:
+ALTER TABLE users ADD COLUMN phone VARCHAR(20) NOT NULL DEFAULT '';
 
-// รัน migration
-php artisan migrate
+-- 🚨 Problem: Application error เพราะ validation ที่ไม่คาดคิด
 
-// rollback
-php artisan migrate:rollback
+-- Rollback Plan:
+-- 1. หยุด application ทันที
+-- 2. ลบ column ที่เพิ่งเพิ่ม
+ALTER TABLE users DROP COLUMN phone;
+
+-- 3. เริ่ม application version เก่า
+-- 4. แก้ไข validation logic ใน code
+-- 5. ทำ migration ใหม่ด้วย column เป็น NULL ก่อน
+ALTER TABLE users ADD COLUMN phone VARCHAR(20) NULL;
 ```
 
-#### **Django Example**
-```python
-# models.py
-class User(models.Model):
-    email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=20, blank=True)  # เพิ่ม field
+#### **Scenario 2: Rollback การเปลี่ยนชนิดข้อมูลที่ล้มเหลว**
 
-# สร้าง migration
-python manage.py makemigrations
+```sql
+-- สถานการณ์: เปลี่ยน price จาก INT เป็น DECIMAL แต่มีข้อมูลผิดพลาด
+-- Migration ที่ทำไป:
+ALTER TABLE products ADD COLUMN price_decimal DECIMAL(10,2);
+UPDATE products SET price_decimal = price_int / 100;
 
-# รัน migration  
-python manage.py migrate
+-- 🚨 Problem: พบข้อมูล price_int มีค่าลบที่ไม่ควรมี
 
-# ดู SQL ที่จะรัน
-python manage.py sqlmigrate myapp 0001
+-- Emergency Rollback:
+-- 1. Restore จาก backup (ถ้ามี)
+mysql mydb < backup_before_migration.sql;
+
+-- หรือ Manual Rollback:
+-- 2. ลบ column ใหม่
+ALTER TABLE products DROP COLUMN price_decimal;
+
+-- 3. แก้ไขข้อมูลที่ผิดพลาด
+UPDATE products SET price_int = ABS(price_int) WHERE price_int < 0;
+
+-- 4. ทำ migration ใหม่พร้อม validation
+ALTER TABLE products ADD COLUMN price_decimal DECIMAL(10,2);
+UPDATE products 
+SET price_decimal = price_int / 100 
+WHERE price_int >= 0;
+```
+
+#### **Scenario 3: Rollback การ Partitioning ที่ทำให้ Performance แย่ลง**
+
+```sql
+-- สถานการณ์: แบ่ง partition แต่ query performance แย่ลง
+-- Migration ที่ทำไป: สร้าง orders_partitioned และย้ายข้อมูล
+
+-- 🚨 Problem: Query ช้าลง เพราะ query ข้าม multiple partitions
+
+-- Rollback Strategy:
+-- 1. หยุดการเขียนข้อมูลใหม่ชั่วคราว
+UPDATE application_config SET maintenance_mode = TRUE;
+
+-- 2. สร้าง table แบบเดิม (ไม่มี partition)
+CREATE TABLE orders_restored (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL,
+    status ENUM('pending', 'paid', 'shipped', 'delivered') NOT NULL,
+    order_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_orders_user_id (user_id),
+    INDEX idx_orders_status (status),
+    INDEX idx_orders_date (order_date)
+);
+
+-- 3. Copy ข้อมูลกลับจาก partitioned table
+INSERT INTO orders_restored SELECT * FROM orders_partitioned;
+
+-- 4. Backup partitioned table และ drop
+RENAME TABLE orders_partitioned TO orders_partitioned_backup;
+RENAME TABLE orders_restored TO orders;
+
+-- 5. เริ่ม application ปกติ
+UPDATE application_config SET maintenance_mode = FALSE;
+
+-- 6. วิเคราะห์ปัญหาและปรับปรุง partition strategy
+```
+
+#### **Scenario 4: Rollback การ Migration ที่ Corrupt ข้อมูล**
+
+```sql
+-- สถานการณ์: Migration script มี bug ทำให้ข้อมูลเพี้ยน
+-- Migration ที่ทำไป:
+UPDATE users SET status = 'active' WHERE last_login > '2024-01-01';
+-- 🚨 Bug: ควรเป็น >= แต่เขียนเป็น >
+
+-- Emergency Response:
+-- 1. หยุด application ทันที
+sudo systemctl stop myapp
+
+-- 2. Assess damage
+SELECT COUNT(*) FROM users WHERE status = 'active';
+SELECT COUNT(*) FROM users WHERE last_login = '2024-01-01' AND status != 'active';
+
+-- 3. Point-in-time recovery จาก backup
+-- ใช้ backup ก่อนหน้า migration + binary log replay
+mysqlbinlog --start-datetime="2024-01-01 08:00:00" \
+            --stop-datetime="2024-01-01 09:30:00" \
+            mysql-bin.000001 | mysql mydb
+
+-- 4. Manual data correction (ถ้าทำได้)
+UPDATE users SET status = 'active' 
+WHERE last_login >= '2024-01-01' AND status != 'active';
+
+-- 5. Verify data integrity
+SELECT 
+    status, 
+    COUNT(*),
+    MIN(last_login),
+    MAX(last_login)
+FROM users 
+GROUP BY status;
+```
+
+#### **Scenario 5: Rollback Index ที่ทำให้ระบบช้า**
+
+```sql
+-- สถานการณ์: เพิ่ม composite index แต่ทำให้ INSERT/UPDATE ช้ามาก
+-- Migration ที่ทำไป:
+CREATE INDEX idx_users_complex ON users(email, status, created_at, last_login);
+
+-- 🚨 Problem: Write operations ช้าลง 300%
+
+-- Quick Rollback:
+-- 1. ลบ index ทันที
+DROP INDEX idx_users_complex ON users;
+
+-- 2. Monitor performance recovery
+SHOW PROCESSLIST;
+SELECT * FROM INFORMATION_SCHEMA.INNODB_TRX;
+
+-- 3. วิเคราะห์และสร้าง index ที่เหมาะสมกว่า
+-- อาจแยกเป็น 2-3 index แทน
+CREATE INDEX idx_users_email_status ON users(email, status);
+CREATE INDEX idx_users_created_at ON users(created_at);
+```
+
+### 🛡️ Rollback Best Practices
+
+#### **1. Pre-Migration Preparation**
+```bash
+#!/bin/bash
+# migration-script.sh
+
+# 1. สร้าง backup ก่อน migration
+mysqldump --single-transaction --routines --triggers mydb > "backup_$(date +%Y%m%d_%H%M%S).sql"
+
+# 2. เตรียม rollback script
+cat > rollback.sql << EOF
+-- Rollback commands here
+ALTER TABLE users DROP COLUMN phone;
+EOF
+
+# 3. Test rollback script
+mysql test_db < rollback.sql
+```
+
+#### **2. Monitoring During Migration**
+```sql
+-- ตรวจสอบ performance metrics
+SELECT 
+    VARIABLE_NAME,
+    VARIABLE_VALUE
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME IN (
+    'Innodb_buffer_pool_read_requests',
+    'Innodb_buffer_pool_reads',
+    'Slow_queries',
+    'Threads_running'
+);
+
+-- ตรวจสอบ lock ที่รอ
+SELECT 
+    r.trx_id waiting_trx_id,
+    r.trx_mysql_thread_id waiting_thread,
+    r.trx_query waiting_query,
+    b.trx_id blocking_trx_id,
+    b.trx_mysql_thread_id blocking_thread,
+    b.trx_query blocking_query
+FROM INFORMATION_SCHEMA.INNODB_LOCK_WAITS w
+INNER JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_id = w.blocking_trx_id
+INNER JOIN INFORMATION_SCHEMA.INNODB_TRX r ON r.trx_id = w.requesting_trx_id;
+```
+
+#### **3. Post-Rollback Verification**
+```sql
+-- ตรวจสอบ data integrity หลัง rollback
+SELECT 
+    TABLE_NAME,
+    TABLE_ROWS,
+    DATA_LENGTH,
+    INDEX_LENGTH
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = 'mydb'
+ORDER BY TABLE_NAME;
+
+-- ตรวจสอบ constraints
+SELECT 
+    CONSTRAINT_NAME,
+    TABLE_NAME,
+    CONSTRAINT_TYPE
+FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+WHERE TABLE_SCHEMA = 'mydb'
+AND CONSTRAINT_TYPE IN ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE');
 ```
 
 ## 🚀 สรุป
