@@ -106,6 +106,7 @@ func ProcessOrder(order Order) (OrderResult, error) {
     }, nil
 }
 
+// ตรวจสอบข้อมูลลูกค้า
 func validateCustomer(customer Customer) error {
     if customer.Name == "" || len(customer.Name) < 2 {
         return fmt.Errorf("invalid customer name")
@@ -116,6 +117,7 @@ func validateCustomer(customer Customer) error {
     return nil
 }
 
+// คำนวณยอดรวม
 func calculateSubtotal(items []Item) (float64, error) {
     var total float64
     for _, item := range items {
@@ -127,6 +129,7 @@ func calculateSubtotal(items []Item) (float64, error) {
     return total, nil
 }
 
+// คำนวณส่วนลด
 func calculateDiscount(total float64) float64 {
     if total > 1000 {
         return total * 0.1
@@ -137,10 +140,12 @@ func calculateDiscount(total float64) float64 {
     return 0
 }
 
+// คำนวณภาษี
 func calculateTax(amount float64) float64 {
     return amount * 0.07
 }
 
+// บันทึกการประมวลผลออเดอร์
 func logOrderProcessing(customerName string, amount float64) {
     fmt.Printf("Processing order for %s\n", customerName)
     fmt.Printf("Final amount: %.2f\n", amount)
@@ -202,7 +207,7 @@ func (u *User) SendPasswordResetEmail() error {
     return nil
 }
 
-// การสร้างรายงาน
+//  การสร้างรายงาน
 func (u *User) GenerateActivityReport() (string, error) {
     // โค้ดสำหรับสร้างรายงานกิจกรรม
     return "", nil
@@ -220,6 +225,7 @@ type User struct {
     LastLogin    *time.Time
 }
 
+// ✅ การจัดการการล็อกอิน
 type UserAuthentication struct {
     user *User
 }
@@ -240,6 +246,7 @@ func (ua *UserAuthentication) Login(password string) bool {
     }
 }
 
+// ✅ การจัดการฐานข้อมูล
 type UserRepository struct{}
 
 func NewUserRepository() *UserRepository {
@@ -256,6 +263,7 @@ func (ur *UserRepository) LoadUser(userID int) (*User, error) {
     return nil, nil
 }
 
+// ✅ การจัดการอีเมล
 type UserEmailService struct{}
 
 func NewUserEmailService() *UserEmailService {
@@ -272,6 +280,7 @@ func (ues *UserEmailService) SendPasswordResetEmail(user *User) error {
     return nil
 }
 
+// ✅ การจัดการรายงาน
 type UserReportService struct{}
 
 func NewUserReportService() *UserReportService {
@@ -357,6 +366,7 @@ func CreateAdmin(name, email string) error {
     return nil
 }
 
+// ✅ ตรวจสอบชื่อ
 func validateName(name string) error {
     if name == "" {
         return fmt.Errorf("name is required")

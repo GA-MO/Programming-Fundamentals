@@ -26,75 +26,39 @@ public class SqlServerDatabase
         Console.WriteLine($"Saving user to SQL Server: {name} - {email}");
         await Task.Delay(100); // Simulate database operation
     }
-
-    public async Task<string> GetUserAsync(string email)
-    {
-        Console.WriteLine($"Getting user from SQL Server: {email}");
-        await Task.Delay(100);
-        return $"User: {email}";
-    }
-}
-
-// Low-level module - Email Service
-public class SmtpEmailService
-{
-    public async Task SendEmailAsync(string to, string subject, string body)
-    {
-        Console.WriteLine($"Sending email via SMTP to {to}: {subject}");
-        await Task.Delay(100); // Simulate email sending
-    }
 }
 
 // High-level module - User Service (ขึ้นต่อ concrete class)
 public class UserService
 {
     private readonly SqlServerDatabase _database;
-    private readonly SmtpEmailService _emailService;
 
     public UserService()
     {
         _database = new SqlServerDatabase();
-        _emailService = new SmtpEmailService();
     }
 
     public async Task CreateUserAsync(string name, string email)
     {
-        // บันทึกผู้ใช้ลงฐานข้อมูล
         await _database.SaveUserAsync(name, email);
-
-        // ส่งอีเมลยืนยัน
-        await _emailService.SendEmailAsync(email, "Welcome", $"Welcome {name}!");
-    }
-
-    public async Task<string> GetUserAsync(string email)
-    {
-        return await _database.GetUserAsync(email);
     }
 }
 
-// Application ที่ขึ้นต่อ UserService
-public class Application
+// --- การใช้งาน ---
+public class Program
 {
-    private readonly UserService _userService;
-
-    public Application()
+    public static async Task Main()
     {
-        _userService = new UserService();
-    }
-
-    public async Task RunAsync()
-    {
-        await _userService.CreateUserAsync("John Doe", "john@example.com");
-        var user = await _userService.GetUserAsync("john@example.com");
-        Console.WriteLine(user);
+        var userService = new UserService();
+        await userService.CreateUserAsync("John Doe", "john@example.com");
     }
 }
 ```
 
 ### ปัญหาของโค้ดข้างต้น:
-1. **ขึ้นต่อ concrete class**: UserService ขึ้นต่อ SqlServerDatabase และ SmtpEmailService โดยตรง
-2. **ยากต่อการทดสอบ**: ไม่สามารถ mock database หรือ email service ได้
-3. **ยากต่อการเปลี่ยน**: ถ้าต้องการเปลี่ยนเป็น MongoDB หรือ SendGrid ต้องแก้ไข UserService
+1. **ขึ้นต่อ concrete class**: `UserService` ขึ้นต่อ `SqlServerDatabase` โดยตรง
+2. **ยากต่อการทดสอบ**: ไม่สามารถ mock database ได้ง่าย
+3. **ยากต่อการเปลี่ยน**: ถ้าต้องการเปลี่ยนเป็น `MongoDB` ต้องแก้ไข `UserService`
 4. **ผิดหลักการ**: High-level module ขึ้นต่อ low-level module
 
 ---
@@ -109,65 +73,24 @@ using System.Threading.Tasks;
 public interface IUserRepository
 {
     Task SaveUserAsync(string name, string email);
-    Task<string> GetUserAsync(string email);
-}
-
-// Abstraction - Interface สำหรับ Email Service
-public interface IEmailService
-{
-    Task SendEmailAsync(string to, string subject, string body);
 }
 
 // Low-level module - SQL Server implementation
-public class SqlServerDatabase : IUserRepository
+public class SqlServerRepository : IUserRepository
 {
     public async Task SaveUserAsync(string name, string email)
     {
         Console.WriteLine($"Saving user to SQL Server: {name} - {email}");
         await Task.Delay(100);
     }
-
-    public async Task<string> GetUserAsync(string email)
-    {
-        Console.WriteLine($"Getting user from SQL Server: {email}");
-        await Task.Delay(100);
-        return $"User from SQL Server: {email}";
-    }
 }
 
 // Low-level module - MongoDB implementation
-public class MongoDatabase : IUserRepository
+public class MongoRepository : IUserRepository
 {
     public async Task SaveUserAsync(string name, string email)
     {
         Console.WriteLine($"Saving user to MongoDB: {name} - {email}");
-        await Task.Delay(100);
-    }
-
-    public async Task<string> GetUserAsync(string email)
-    {
-        Console.WriteLine($"Getting user from MongoDB: {email}");
-        await Task.Delay(100);
-        return $"User from MongoDB: {email}";
-    }
-}
-
-// Low-level module - SMTP implementation
-public class SmtpEmailService : IEmailService
-{
-    public async Task SendEmailAsync(string to, string subject, string body)
-    {
-        Console.WriteLine($"Sending email via SMTP to {to}: {subject}");
-        await Task.Delay(100);
-    }
-}
-
-// Low-level module - SendGrid implementation
-public class SendGridEmailService : IEmailService
-{
-    public async Task SendEmailAsync(string to, string subject, string body)
-    {
-        Console.WriteLine($"Sending email via SendGrid to {to}: {subject}");
         await Task.Delay(100);
     }
 }
@@ -176,52 +99,23 @@ public class SendGridEmailService : IEmailService
 public class UserService
 {
     private readonly IUserRepository _repository;
-    private readonly IEmailService _emailService;
 
-    public UserService(IUserRepository repository, IEmailService emailService)
+    public UserService(IUserRepository repository)
     {
         _repository = repository;
-        _emailService = emailService;
     }
 
     public async Task CreateUserAsync(string name, string email)
     {
-        // บันทึกผู้ใช้ลงฐานข้อมูล
         await _repository.SaveUserAsync(name, email);
-
-        // ส่งอีเมลยืนยัน
-        await _emailService.SendEmailAsync(email, "Welcome", $"Welcome {name}!");
-    }
-
-    public async Task<string> GetUserAsync(string email)
-    {
-        return await _repository.GetUserAsync(email);
-    }
-}
-
-// Application ที่ขึ้นต่อ abstraction
-public class Application
-{
-    private readonly UserService _userService;
-
-    public Application(UserService userService)
-    {
-        _userService = userService;
-    }
-
-    public async Task RunAsync()
-    {
-        await _userService.CreateUserAsync("John Doe", "john@example.com");
-        var user = await _userService.GetUserAsync("john@example.com");
-        Console.WriteLine(user);
     }
 }
 ```
 
 ### ข้อดีของโค้ดที่ดี:
-1. **ขึ้นต่อ abstraction**: UserService ขึ้นต่อ interface ไม่ใช่ concrete class
-2. **ทดสอบง่าย**: สามารถ mock interface ได้ง่าย
-3. **เปลี่ยนได้ง่าย**: สามารถเปลี่ยน implementation โดยไม่แก้ไข UserService
+1. **ขึ้นต่อ abstraction**: `UserService` ขึ้นต่อ interface ไม่ใช่ concrete class
+2. **ทดสอบง่าย**: สามารถ mock `IUserRepository` ได้ง่าย
+3. **เปลี่ยนได้ง่าย**: สามารถเปลี่ยนไปใช้ `MongoRepository` โดยไม่ต้องแก้ไข `UserService`
 4. **รักษาหลักการ**: High-level module ไม่ขึ้นต่อ low-level module
 
 ---
@@ -233,23 +127,19 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        // ใช้ SQL Server และ SMTP
-        Console.WriteLine("Using SQL Server and SMTP:");
-        var sqlRepository = new SqlServerDatabase();
-        var smtpEmail = new SmtpEmailService();
-        var userService1 = new UserService(sqlRepository, smtpEmail);
-        var app1 = new Application(userService1);
-        await app1.RunAsync();
+        // ใช้ SQL Server
+        Console.WriteLine("Using SQL Server Repository:");
+        IUserRepository sqlRepository = new SqlServerRepository();
+        var userService1 = new UserService(sqlRepository);
+        await userService1.CreateUserAsync("John Doe", "john.sql@example.com");
 
         Console.WriteLine("\n" + new string('-', 50) + "\n");
 
-        // เปลี่ยนเป็น MongoDB และ SendGrid โดยไม่แก้ไข UserService
-        Console.WriteLine("Using MongoDB and SendGrid:");
-        var mongoRepository = new MongoDatabase();
-        var sendGridEmail = new SendGridEmailService();
-        var userService2 = new UserService(mongoRepository, sendGridEmail);
-        var app2 = new Application(userService2);
-        await app2.RunAsync();
+        // เปลี่ยนเป็น MongoDB โดยไม่แก้ไข UserService
+        Console.WriteLine("Using MongoDB Repository:");
+        IUserRepository mongoRepository = new MongoRepository();
+        var userService2 = new UserService(mongoRepository);
+        await userService2.CreateUserAsync("Jane Doe", "jane.mongo@example.com");
     }
 }
 ```
@@ -258,40 +148,35 @@ class Program
 
 ## Dependency Injection Container
 
+ใน .NET เรามักใช้ DI Container ที่มาพร้อมกับ Framework เช่น `Microsoft.Extensions.DependencyInjection`
+
 ```csharp
-// ตัวอย่างการใช้ Dependency Injection Container
-public class ServiceContainer
+// ตัวอย่างการตั้งค่าในไฟล์ Program.cs หรือ Startup.cs ของ ASP.NET Core
+public void ConfigureServices(IServiceCollection services)
 {
-    private readonly Dictionary<Type, object> _services = new();
+    // Register IUserRepository ให้ชี้ไปที่ SqlServerRepository
+    // หากต้องการเปลี่ยนเป็น MongoRepository ก็แค่เปลี่ยนบรรทัดนี้
+    services.AddScoped<IUserRepository, SqlServerRepository>();
 
-    public void Register<T>(T implementation)
-    {
-        _services[typeof(T)] = implementation;
-    }
-
-    public T Resolve<T>()
-    {
-        return (T)_services[typeof(T)];
-    }
+    // Register UserService
+    services.AddScoped<UserService>();
 }
 
-// การใช้งาน DI Container
-public class ProgramWithDI
+// เวลาใช้งาน Controller หรือ Service อื่นๆ .NET จะฉีด (inject) dependency ให้เอง
+public class UserController : ControllerBase
 {
-    static async Task Main(string[] args)
+    private readonly UserService _userService;
+
+    public UserController(UserService userService)
     {
-        // Setup DI Container
-        var container = new ServiceContainer();
-        container.Register<IUserRepository>(new SqlServerDatabase());
-        container.Register<IEmailService>(new SmtpEmailService());
+        _userService = userService;
+    }
 
-        // Resolve dependencies
-        var repository = container.Resolve<IUserRepository>();
-        var emailService = container.Resolve<IEmailService>();
-        var userService = new UserService(repository, emailService);
-        var app = new Application(userService);
-
-        await app.RunAsync();
+    [HttpPost]
+    public async Task<IActionResult> CreateUser(string name, string email)
+    {
+        await _userService.CreateUserAsync(name, email);
+        return Ok();
     }
 }
 ```
@@ -303,68 +188,27 @@ public class ProgramWithDI
 ```csharp
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
-using System;
 using System.Threading.Tasks;
 
 [TestClass]
 public class DependencyInversionTests
 {
     [TestMethod]
-    public async Task UserService_CreateUser_ShouldSucceed()
+    public async Task UserService_CreateUser_ShouldCallSaveUserAsync()
     {
         // Arrange
         var mockRepository = new Mock<IUserRepository>();
-        var mockEmailService = new Mock<IEmailService>();
-        var userService = new UserService(mockRepository.Object, mockEmailService.Object);
+        var userService = new UserService(mockRepository.Object);
+
+        var name = "John Doe";
+        var email = "john@example.com";
 
         // Act
-        await userService.CreateUserAsync("John", "john@example.com");
+        await userService.CreateUserAsync(name, email);
 
         // Assert
-        mockRepository.Verify(r => r.SaveUserAsync("John", "john@example.com"), Times.Once);
-        mockEmailService.Verify(e => e.SendEmailAsync("john@example.com", "Welcome", "Welcome John!"), Times.Once);
-    }
-
-    [TestMethod]
-    public async Task UserService_GetUser_ShouldReturnUser()
-    {
-        // Arrange
-        var mockRepository = new Mock<IUserRepository>();
-        var mockEmailService = new Mock<IEmailService>();
-        var userService = new UserService(mockRepository.Object, mockEmailService.Object);
-
-        mockRepository.Setup(r => r.GetUserAsync("john@example.com"))
-                     .ReturnsAsync("User: john@example.com");
-
-        // Act
-        var result = await userService.GetUserAsync("john@example.com");
-
-        // Assert
-        Assert.AreEqual("User: john@example.com", result);
-    }
-
-    [TestMethod]
-    public async Task SqlServerDatabase_ShouldImplementInterface()
-    {
-        // Arrange
-        IUserRepository repository = new SqlServerDatabase();
-
-        // Act & Assert
-        await repository.SaveUserAsync("John", "john@example.com"); // Should not throw
-        var user = await repository.GetUserAsync("john@example.com");
-        Assert.IsNotNull(user);
-    }
-
-    [TestMethod]
-    public async Task MongoDatabase_ShouldImplementInterface()
-    {
-        // Arrange
-        IUserRepository repository = new MongoDatabase();
-
-        // Act & Assert
-        await repository.SaveUserAsync("John", "john@example.com"); // Should not throw
-        var user = await repository.GetUserAsync("john@example.com");
-        Assert.IsNotNull(user);
+        // ตรวจสอบว่า SaveUserAsync ถูกเรียก 1 ครั้งด้วยพารามิเตอร์ที่ถูกต้อง
+        mockRepository.Verify(r => r.SaveUserAsync(name, email), Times.Once);
     }
 }
 ```

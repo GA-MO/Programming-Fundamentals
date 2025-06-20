@@ -30,7 +30,9 @@ type Worker interface {
     Test() string
     Deploy() string
 }
+```
 
+```go
 // HumanWorker - คนทำงานทั่วไป
 type HumanWorker struct {
     name string
@@ -83,7 +85,9 @@ func (h *HumanWorker) Test() string {
 func (h *HumanWorker) Deploy() string {
     return fmt.Sprintf("%s is deploying", h.name)
 }
+```
 
+```go
 // RobotWorker - หุ่นยนต์ที่ทำได้แค่บางอย่าง
 type RobotWorker struct {
     id string
@@ -136,7 +140,9 @@ func (r *RobotWorker) Test() string {
 func (r *RobotWorker) Deploy() string {
     return fmt.Sprintf("Robot %s is deploying", r.id)
 }
+```
 
+```go
 // WorkManager ที่ใช้งาน
 type WorkManager struct{}
 
@@ -194,7 +200,8 @@ type SoftwareDeveloper interface {
     Test() string
     Deploy() string
 }
-
+```
+```go
 // HumanWorker - คนทำงานทั่วไป
 type HumanWorker struct {
     name string
@@ -243,7 +250,9 @@ func (h *HumanWorker) Test() string {
 func (h *HumanWorker) Deploy() string {
     return fmt.Sprintf("%s is deploying", h.name)
 }
+```
 
+```go
 // RobotWorker - หุ่นยนต์ที่ทำได้แค่บางอย่าง
 type RobotWorker struct {
     id string
@@ -276,7 +285,9 @@ func (r *RobotWorker) Test() string {
 func (r *RobotWorker) Deploy() string {
     return fmt.Sprintf("Robot %s is deploying", r.id)
 }
+```
 
+```go
 // WorkManager ที่ใช้งานเฉพาะ interface ที่ต้องการ
 type WorkManager struct{}
 

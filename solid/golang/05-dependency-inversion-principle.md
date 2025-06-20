@@ -22,26 +22,6 @@ type NotificationService struct {
     smsSender   *SMSSender
 }
 
-type EmailSender struct {
-    smtpServer string
-    port       int
-}
-
-func (e *EmailSender) Send(to, subject, body string) error {
-    fmt.Printf("Sending email to %s: %s\n", to, subject)
-    return nil
-}
-
-type SMSSender struct {
-    apiKey string
-    apiUrl string
-}
-
-func (s *SMSSender) Send(to, message string) error {
-    fmt.Printf("Sending SMS to %s: %s\n", to, message)
-    return nil
-}
-
 func NewNotificationService() *NotificationService {
     return &NotificationService{
         emailSender: &EmailSender{
@@ -61,6 +41,28 @@ func (n *NotificationService) SendEmailNotification(user *User, message string) 
 
 func (n *NotificationService) SendSMSNotification(user *User, message string) error {
     return n.smsSender.Send(user.Phone, message)
+}
+
+// ทำหน้าที่ส่งอีเมล
+type EmailSender struct {
+    smtpServer string
+    port       int
+}
+
+func (e *EmailSender) Send(to, subject, body string) error {
+    fmt.Printf("Sending email to %s: %s\n", to, subject)
+    return nil
+}
+
+// ทำหน้าที่ส่ง SMS
+type SMSSender struct {
+    apiKey string
+    apiUrl string
+}
+
+func (s *SMSSender) Send(to, message string) error {
+    fmt.Printf("Sending SMS to %s: %s\n", to, message)
+    return nil
 }
 
 // User struct
@@ -118,88 +120,78 @@ func (s *UserService) GetUser(id int) (*User, error) {
 
 ### 1. ใช้ Interface สำหรับ Notification
 
+เพื่อให้เข้าใจง่ายขึ้น เราจะสร้างตัวอย่างที่เน้นหลักการ DIP โดยตรง โดยแยกส่วนของ Notification ออกมาให้ชัดเจน
+
+**หลักการ:** `NotificationService` (high-level module) จะไม่ขึ้นกับ `EmailSender` (low-level module) โดยตรง แต่จะขึ้นกับ `MessageSender` (abstraction) ซึ่งเป็น interface
+
 ```go
-// Notification interface - abstraction
-type NotificationSender interface {
-    Send(to, message string) error
+// 1. สร้าง Abstraction (Interface)
+// เป็น Interface ที่กำหนดว่า object ที่จะส่งข้อความต้องทำอะไรได้บ้าง
+type MessageSender interface {
+    Send(recipient string, message string) error
 }
 
-// EmailSender implementation
-type EmailSender struct {
-    smtpServer string
-    port       int
-}
-
-func (e *EmailSender) Send(to, message string) error {
-    fmt.Printf("Sending email to %s: %s\n", to, message)
-    return nil
-}
-
-// SMSSender implementation
-type SMSSender struct {
-    apiKey string
-    apiUrl string
-}
-
-func (s *SMSSender) Send(to, message string) error {
-    fmt.Printf("Sending SMS to %s: %s\n", to, message)
-    return nil
-}
-
-// PushNotificationSender implementation
-type PushNotificationSender struct {
-    fcmKey string
-}
-
-func (p *PushNotificationSender) Send(to, message string) error {
-    fmt.Printf("Sending push notification to %s: %s\n", to, message)
-    return nil
-}
-
-// NotificationService ที่ขึ้นต่อ abstraction
+// 2. สร้าง High-level Module ที่ขึ้นต่อ Abstraction
+// Service ของเราจะรู้จักแค่ MessageSender ไม่สนใจว่าจริงๆ แล้วเป็น Email หรือ SMS
 type NotificationService struct {
-    senders map[string]NotificationSender
+    emailSender MessageSender // ขึ้นอยู่กับ Interface, ไม่ใช่ Concrete Type
+    smsSender   MessageSender // ขึ้นอยู่กับ Interface, ไม่ใช่ Concrete Type
 }
 
-func NewNotificationService() *NotificationService {
-    return &NotificationService{
-        senders: make(map[string]NotificationSender),
+// ใช้ Dependency Injection เพื่อส่ง dependency (sender) เข้ามาตอนสร้าง object
+func NewNotificationService(emailSender MessageSender, smsSender MessageSender) *NotificationService {
+    return &NotificationService{emailSender: emailSender, smsSender: smsSender}
+}
+
+func (s *NotificationService) SendEmailNotification(recipient string, message string) error {
+    // เรียกใช้ method ผ่าน interface
+    return s.emailSender.Send(recipient, message)
+}
+
+func (s *NotificationService) SendSMSNotification(recipient string, message string) error {
+    // เรียกใช้ method ผ่าน interface
+    return s.smsSender.Send(recipient, message)
     }
+
+// 3. สร้าง Low-level Modules ที่ทำหน้าที่ส่งข้อความจริง และขึ้นอยู่กับ Abstraction
+// EmailSender ทำตาม Interface ของ MessageSender
+type EmailSender struct{}
+
+func (s *EmailSender) Send(recipient string, message string) error {
+    fmt.Printf("Sending email to %s: %s\n", recipient, message)
+    return nil
 }
 
-func (n *NotificationService) AddSender(name string, sender NotificationSender) {
-    n.senders[name] = sender
+// SMSSender ก็ทำตาม Interface ของ MessageSender
+type SMSSender struct{}
+
+func (s *SMSSender) Send(recipient string, message string) error {
+    fmt.Printf("Sending SMS to %s: %s\n", recipient, message)
+    return nil
 }
 
-func (n *NotificationService) SendNotification(user *User, message, method string) error {
-    sender, exists := n.senders[method]
-    if !exists {
-        return fmt.Errorf("unsupported notification method: %s", method)
-    }
-    
-    var to string
-    switch method {
-    case "email":
-        to = user.Email
-    case "sms":
-        to = user.Phone
-    case "push":
-        to = user.DeviceToken
-    default:
-        return fmt.Errorf("unknown notification method: %s", method)
-    }
-    
-    return sender.Send(to, message)
+// MockMessageSender implementation (สำหรับ testing)
+type MockMessageSender struct {}
+func (m *MockMessageSender) Send(recipient string, message string) error {
+    fmt.Printf("Sending mock message to %s: %s\n", recipient, message)
+    return nil
 }
 
-// User struct
-type User struct {
-    Name        string
-    Email       string
-    Phone       string
-    DeviceToken string
+// --- ตัวอย่างการใช้งาน ---
+func main_notification() {
+    // สร้าง Service โดยส่ง EmailSender เข้าไป และ SMSSender เข้าไป
+    emailSender := &EmailSender{}
+    smsSender := &SMSSender{}
+    emailService := NewNotificationService(emailSender, smsSender)
+    emailService.SendEmailNotification("test@example.com", "Hello from Email!")
+    emailService.SendSMSNotification("0812345678", "Hello from SMS!")
 }
 ```
+
+**ข้อดีของโค้ดนี้:**
+- **Decoupled**: `NotificationService` ไม่ผูกติดกับ `EmailSender` หรือ `SMSSender`
+- **Flexible**: เราสามารถเปลี่ยนไปใช้ `SMSSender` หรือ sender อื่นๆ ที่ implement `MessageSender` ได้ง่ายๆ โดยไม่ต้องแก้โค้ด `NotificationService` เลย
+- **Testable**: สามารถสร้าง `MockMessageSender` เพื่อทดสอบ `NotificationService` ได้โดยง่าย (ดูในหัวข้อ "การทดสอบ")
 
 ### 2. ใช้ Interface สำหรับ Database
 
@@ -433,26 +425,6 @@ func (a *Application) DoSomething() {
 
 ```go
 func main() {
-    // Setup Notification Service
-    notificationService := NewNotificationService()
-    
-    // Add different notification senders
-    emailSender := &EmailSender{
-        smtpServer: "smtp.gmail.com",
-        port:       587,
-    }
-    smsSender := &SMSSender{
-        apiKey: "your-api-key",
-        apiUrl: "https://api.sms.com",
-    }
-    pushSender := &PushNotificationSender{
-        fcmKey: "your-fcm-key",
-    }
-    
-    notificationService.AddSender("email", emailSender)
-    notificationService.AddSender("sms", smsSender)
-    notificationService.AddSender("push", pushSender)
-    
     // Setup User Service with MySQL
     mysqlRepo, err := NewMySQLUserRepository("user:password@tcp(localhost:3306)/dbname")
     if err != nil {
@@ -482,11 +454,6 @@ func main() {
     if err != nil {
         log.Printf("Error creating user: %v", err)
     }
-    
-    // ส่ง notification หลายวิธี
-    notificationService.SendNotification(user, "Welcome!", "email")
-    notificationService.SendNotification(user, "Welcome!", "sms")
-    notificationService.SendNotification(user, "Welcome!", "push")
     
     // ใช้งาน application
     app.DoSomething()
@@ -530,12 +497,11 @@ func SetupContainer() *Container {
     container.Register("userService", userService)
     
     // Register notification senders
-    emailSender := &EmailSender{smtpServer: "smtp.gmail.com", port: 587}
-    smsSender := &SMSSender{apiKey: "your-api-key", apiUrl: "https://api.sms.com"}
+    emailSender := &EmailSender{}
+    smsSender := &SMSSender{}
     
-    notificationService := NewNotificationService()
-    notificationService.AddSender("email", emailSender)
-    notificationService.AddSender("sms", smsSender)
+    notificationService := NewNotificationService(emailSender)
+    notificationService.sender = smsSender
     container.Register("notificationService", notificationService)
     
     // Register logger
@@ -556,7 +522,7 @@ func main() {
     // ใช้งาน services
     user := &User{Name: "John", Email: "john@example.com"}
     userService.CreateUser(user)
-    notificationService.SendNotification(user, "Welcome!", "email")
+    notificationService.SendNotification("john@example.com", "Welcome!")
     logger.Log("User created successfully")
 }
 ```
@@ -588,23 +554,33 @@ func TestUserService_CreateUser(t *testing.T) {
     assert.Equal(t, "john@example.com", savedUser.Email)
 }
 
+// Mock implementations สำหรับ testing
+type MockMessageSender struct {
+    LastRecipient string
+    LastMessage   string
+}
+
+func (m *MockMessageSender) Send(recipient, message string) error {
+    m.LastRecipient = recipient
+    m.LastMessage = message
+    return nil
+}
+
 func TestNotificationService_SendNotification(t *testing.T) {
-    notificationService := NewNotificationService()
-    
-    // ใช้ mock sender
-    mockSender := &MockNotificationSender{}
-    notificationService.AddSender("test", mockSender)
-    
-    user := &User{
-        Name:  "John",
-        Email: "john@example.com",
-    }
-    
-    err := notificationService.SendNotification(user, "Test message", "test")
-    
+    // 1. Setup: สร้าง Mock Sender และฉีดเข้าไปใน Service
+    mockEmailSender := &MockMessageSender{}
+    mockSMSSender := &MockMessageSender{}
+    notificationService := NewNotificationService(mockEmailSender, mockSMSSender)
+
+    // 2. Act: เรียกใช้งาน Service
+    recipient := "test@example.com"
+    message := "Hello, this is a test"
+    err := notificationService.SendEmailNotification(recipient, message)
+
+    // 3. Assert: ตรวจสอบว่า Mock Sender ถูกเรียกด้วยข้อมูลที่ถูกต้อง
     assert.NoError(t, err)
-    assert.Equal(t, "john@example.com", mockSender.LastTo)
-    assert.Equal(t, "Test message", mockSender.LastMessage)
+    assert.Equal(t, recipient, mockEmailSender.LastRecipient)
+    assert.Equal(t, message, mockEmailSender.LastMessage)
 }
 
 func TestApplication_DoSomething(t *testing.T) {
@@ -620,17 +596,6 @@ func TestApplication_DoSomething(t *testing.T) {
     assert.Contains(t, messages[1], "Application finished")
 }
 
-// Mock implementations สำหรับ testing
-type MockNotificationSender struct {
-    LastTo      string
-    LastMessage string
-}
-
-func (m *MockNotificationSender) Send(to, message string) error {
-    m.LastTo = to
-    m.LastMessage = message
-    return nil
-}
 ```
 
 ---
@@ -662,4 +627,3 @@ func (m *MockNotificationSender) Send(to, message string) error {
 - **[Single Responsibility Principle](./01-single-responsibility-principle.md)** - การแยกหน้าที่ช่วยให้ DIP ทำงานได้ดีขึ้น
 - **[Open/Closed Principle](./02-open-closed-principle.md)** - การใช้ abstraction ช่วยให้ OCP ทำงานได้ดีขึ้น
 - **[Interface Segregation Principle](./04-interface-segregation-principle.md)** - การใช้ interface เล็กๆ ช่วยให้ DIP ทำงานได้ดีขึ้น
-```
